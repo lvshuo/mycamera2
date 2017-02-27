@@ -3,18 +3,24 @@ package com.example.andylv.mycamer2;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.SurfaceTexture;
 import android.media.Image;
 import android.media.ImageReader;
+import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.os.HandlerThread;
+import android.provider.MediaStore;
 import android.support.annotation.RequiresApi;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.FileProvider;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Size;
@@ -24,11 +30,15 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.TextureView;
 import android.view.View;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -74,21 +84,40 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private CameraCaptureSession mCameraCaptureSession;
     private CameraDevice mCameraDevice;
 
+
+
+    private LogUser loguser;
+
+    private File mFile;
+
+    private Uri imageUri;
+
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        Button Picture = (Button)findViewById(R.id.picture);
+        Picture.setOnClickListener(this);
+
         initVIew();
     }
 
+
+//    public void Capture(View view){
+//        takePicture();
+//    }
     /**
      * 初始化
      */
     private void initVIew() {
         iv_show = (ImageView) findViewById(R.id.iv_show_camera2_activity);
+        iv_show.setOnClickListener(this);
         //mSurfaceView
         mSurfaceView = (SurfaceView) findViewById(R.id.surface_view_camera2_activity);
         mSurfaceView.setOnClickListener(this);
+
         mSurfaceHolder = mSurfaceView.getHolder();
         mSurfaceHolder.setKeepScreenOn(true);
         // mSurfaceView添加回调
@@ -125,21 +154,77 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mainHandler = new Handler(getMainLooper());
         mCameraID = "" + CameraCharacteristics.LENS_FACING_FRONT;//后摄像头
         mImageReader = ImageReader.newInstance(1080, 1920, ImageFormat.JPEG,1);
+       // mFile = new File(Environment.getExternalStorageDirectory().getPath(),"output.jpg");
+        mFile = new File("/sdcard/temp_1.png");
+        //loguser.d(TAG,getFilesDir());
         mImageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() { //可以在这里处理拍照得到的临时照片 例如，写入本地
             @Override
             public void onImageAvailable(ImageReader reader) {
-                mCameraDevice.close();
-                mSurfaceView.setVisibility(View.GONE);
+              //  mCameraDevice.close();
+             //   mSurfaceView.setVisibility(View.GONE);
                 iv_show.setVisibility(View.VISIBLE);
                 // 拿到拍照照片数据
-                Image image = reader.acquireNextImage();
+                Image image = reader.acquireLatestImage();
+                      //  reader.acquireNextImage();
+               // ImageSaver mImageSaver =new ImageSaver(image,mFile);
+
                 ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                 byte[] bytes = new byte[buffer.remaining()];
                 buffer.get(bytes);//由缓冲区存入字节数组
+
+              //  FileOutputStream output = null;
+//                try {
+//                    FileOutputStream fos = new FileOutputStream(mFile);
+//                    fos.write(bytes);
+//                    fos.close();
+//
+//                } catch (FileNotFoundException e) {
+//                    e.printStackTrace();
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                }
+
+//                try {
+//                    output = new FileOutputStream(mFile);
+//                    output.write(bytes);
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                } finally {
+//                   // mImage.close();
+//                    if (null != output) {
+//                        try {
+//                            output.close();
+//                        } catch (IOException e) {
+//                            e.printStackTrace();
+//                        }
+//                    }
+//                }
                 final Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-                if (bitmap != null) {
-                    iv_show.setImageBitmap(bitmap);
-                }
+                saveImageToGallery(MyApplication.getContext(),bitmap);
+                picture_preview();
+
+//                final Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+//                if (bitmap != null) {
+//                    iv_show.setImageBitmap(bitmap);
+//                }
+//                if (Build.VERSION.SDK_INT < 24) {
+//                    imageUri = Uri.fromFile(mFile);
+//                } else {
+//                    imageUri = FileProvider.getUriForFile(MainActivity.this, "com.example.andylv.mycamer2.fileprovider", mFile);
+//                }
+//                try {
+//                    // 将拍摄的照片显示出来
+//                    Bitmap bitmap = BitmapFactory.decodeStream(getContentResolver().openInputStream(imageUri));
+//                    iv_show.setImageBitmap(bitmap);
+//                } catch (Exception e) {
+//                    e.printStackTrace();
+//                }
+
+
+
+
+
+
             }
         }, mainHandler);
         //获取摄像头管理
@@ -153,6 +238,101 @@ public class MainActivity extends Activity implements View.OnClickListener {
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * save image
+     */
+
+    public  void saveImageToGallery(Context context, Bitmap bmp) {
+        // 首先保存图片
+        File appDir = new File(Environment.getExternalStorageDirectory(), "Boohee");
+        if (!appDir.exists()) {
+            appDir.mkdir();
+        }
+        String fileName = System.currentTimeMillis() + ".jpg";
+        File file = new File(appDir, fileName);
+        try {
+            FileOutputStream fos = new FileOutputStream(file);
+            bmp.compress(Bitmap.CompressFormat.JPEG, 100, fos);
+            fos.flush();
+            fos.close();
+            loguser.d(TAG,"get into here for save image?");
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        // 其次把文件插入到系统图库
+        try {
+            MediaStore.Images.Media.insertImage(context.getContentResolver(),
+                    file.getAbsolutePath(), fileName, null);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+        // 最后通知图库更新
+        context.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse("file://" + file.getAbsolutePath())));
+    }
+
+
+    private void picture_preview(){
+        try {
+            FileInputStream fis = new FileInputStream(mFile.getAbsolutePath());
+            Bitmap bitmap = BitmapFactory.decodeStream(fis);
+            Matrix matrix = new Matrix();
+            matrix.setRotate(90);
+            bitmap = Bitmap.createBitmap(bitmap,0,0,
+                    bitmap.getWidth(),bitmap.getHeight(),matrix,true);
+            iv_show.setImageBitmap(bitmap);
+
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+
+    }
+    /**
+     * Saves a JPEG {@link Image} into the specified {@link File}.
+     */
+    private static class ImageSaver implements Runnable {
+
+        /**
+         * The JPEG image
+         */
+        private final Image mImage;
+        /**
+         * The file we save the image into.
+         */
+        private final File mFile;
+
+        public ImageSaver(Image image, File file) {
+            mImage = image;
+            mFile = file;
+        }
+
+        @Override
+        public void run() {
+            ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();
+            byte[] bytes = new byte[buffer.remaining()];
+            buffer.get(bytes);
+            FileOutputStream output = null;
+            try {
+                output = new FileOutputStream(mFile);
+                output.write(bytes);
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                mImage.close();
+                if (null != output) {
+                    try {
+                        output.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+
     }
 
 
@@ -226,7 +406,15 @@ public class MainActivity extends Activity implements View.OnClickListener {
      */
     @Override
     public void onClick(View v) {
-        takePicture();
+       // takePicture();
+        loguser.d("TAG","get into here?");
+        switch (v.getId()) {
+            case R.id.picture: {
+                loguser.d("TAG","get into here too?");
+                takePicture();
+                break;
+            }
+        }
     }
 
     /**
